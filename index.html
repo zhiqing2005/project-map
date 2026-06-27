@@ -298,7 +298,7 @@
 <!-- 顶部栏 -->
 <div class="top-bar">
   <div class="top-bar-left">
-    <h1 class="font-bold text-gray-800" style="display:flex;align-items:center;gap:6px;margin:0;flex-wrap:wrap;"><img src="logo.png" style="width:24px;height:24px;border-radius:3px;" alt="logo" /> <span class="title-full">中电建路桥总包公司工程项目地图</span><span class="title-short" style="display:none;">工程项目地图</span></h1>
+    <h1 class="font-bold text-gray-800" style="display:flex;align-items:center;gap:6px;margin:0;flex-wrap:wrap;"><img src="logo.png" style="width:24px;height:24px;border-radius:3px;" alt="logo" /> <span class="title-full">总包公司项目地图</span><span class="title-short" style="display:none;">总包公司项目地图</span></h1>
   </div>
   <div class="top-bar-center">
     <div class="slogan">
@@ -1642,7 +1642,7 @@ async function refreshMap() {
   renderProjectList(filtered);
   // 更新项目数量显示
   const bar = document.querySelector('.top-bar h1');
-  bar.innerHTML = `<img src="logo.png" style="width:20px;height:20px;border-radius:3px;vertical-align:middle;margin-right:4px;" alt="logo"/>中电建路桥总包公司工程项目地图 <span style="font-size:12px;color:#9ca3af;font-weight:normal">（${projects.length} 个项目）</span>`;
+  bar.innerHTML = `<img src="logo.png" style="width:20px;height:20px;border-radius:3px;vertical-align:middle;margin-right:4px;" alt="logo"/>总包公司项目地图 <span style="font-size:12px;color:#9ca3af;font-weight:normal">（${projects.length} 个项目）</span>`;
 }
 
 // ========== 初始化地图（异步加载）==========
