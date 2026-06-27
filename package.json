@@ -1,0 +1,12 @@
+{
+  "name": "project-map",
+  "version": "1.0.0",
+  "description": "中电建路桥总包公司工程项目地图",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

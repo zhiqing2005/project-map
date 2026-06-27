@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>工程项目地图</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 高德地图 Loader（异步加载）+ LeanCloud SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.15.1/dist/av.min.js"></script>
+  <!-- 高德地图异步加载器 -->
+  <script src="https://unpkg.com/@amap/amap-jsapi-loader@1.0.1/dist/index.js"></script>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    
+    /* 顶部栏 */
+    .top-bar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      padding: 10px 16px;
+      gap: 16px;
+    }
+    .top-bar-left { display: flex; align-items: center; }
+    .top-bar-center { display: flex; justify-content: center; }
+    .top-bar-right { display: flex; justify-content: flex-end; align-items: center; }
+    .slogan {
+      text-align: center;
+      font-family: "STXingkai", "KaiTi", "华文行楷", "楷体", serif;
+      font-size: 26px;
+      font-weight: 700;
+      color: #1e3a8a;
+      letter-spacing: 3px;
+      line-height: 1.2;
+      padding: 4px 16px;
+      position: relative;
+      white-space: nowrap;
+    }
+    .slogan-text {
+      background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #1e3a8a 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: none;
+      filter: drop-shadow(0 1px 1px rgba(0,0,0,0.1));
+    }
+    @media (max-width: 860px) {
+      .slogan { font-size: 18px; letter-spacing: 2px; padding: 4px 8px; }
+    }
+    @media (max-width: 640px) {
+      .top-bar { grid-template-columns: 1fr auto; }
+      .top-bar-center { display: none; }
+      .top-bar h1 { font-size: 15px; }
+    }
+
+    /* 地图容器 */
+    #map-container { width: 100%; height: 100vh; padding-top: 52px; padding-bottom: 40px; }
+
+    /* 弹窗 */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      z-index: 1000; display: flex; align-items: center; justify-content: center;
+    }
+    .modal-overlay.hidden {
+      display: none !important;
+    }
+    .modal-content {
+      background: white; border-radius: 12px; padding: 24px;
+      width: 90%; max-width: 440px; max-height: 85vh; overflow-y: auto;
+    }
+    @media (max-width: 640px) {
+      .modal-content { padding: 18px; max-height: 90vh; }
+    }
+
+    /* 详情卡片（地图上的信息窗体）*/
+    .info-window { padding: 12px; min-width: 220px; max-width: 300px; }
+    .info-window h3 { margin: 0 0 8px 0; font-size: 15px; color: #1f2937; }
+    .info-window p { margin: 4px 0; font-size: 13px; color: #4b5563; }
+    .info-window .label { color: #9ca3af; }
+
+    /* Toast 提示 */
+    #toast {
+      position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+      background: #1f2937; color: white; padding: 10px 20px;
+      border-radius: 8px; font-size: 13px; z-index: 2000;
+    }
+    #toast.hidden { display: none; }
+
+    /* 状态标签 */
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+    .tag-进行中 { background: #d1fae5; color: #059669; }
+    .tag-已完工 { background: #f3f4f6; color: #6b7280; }
+    .tag-暂停 { background: #fef3c7; color: #d97706; }
+    .tag-未开工 { background: #dbeafe; color: #2563eb; }
+    .tag-规划中 { background: #ede9fe; color: #7c3aed; }
+
+    /* 搜索框 */
+    .search-box {
+      position: fixed; top: 62px; left: 50%; transform: translateX(-50%);
+      z-index: 99; background: white; border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+      display: flex; align-items: center; padding: 0 12px;
+      width: 90%; max-width: 400px;
+    }
+    .search-box input {
+      border: none; outline: none; padding: 10px 8px; width: 100%; font-size: 14px;
+    }
+
+    /* 地图图例 */
+    .map-legend {
+      position: fixed; bottom: 56px; right: 16px; z-index: 90;
+      background: white; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+      overflow: hidden; max-width: 200px; max-height: calc(100vh - 120px);
+    }
+    .map-legend-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; cursor: pointer; user-select: none;
+      font-size: 13px; font-weight: 600; color: #1f2937; background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .map-legend-header .toggle-icon { font-size: 11px; color: #9ca3af; transition: transform 0.2s; }
+    .map-legend.collapsed .toggle-icon { transform: rotate(-90deg); }
+    .map-legend-body { padding: 8px 12px; max-height: calc(100vh - 120px); overflow-y: auto; }
+    .map-legend.collapsed .map-legend-body { display: none; }
+    .legend-section-title { font-size: 11px; color: #9ca3af; margin: 6px 0 4px; font-weight: 500; }
+    .legend-item { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12px; color: #374151; }
+    .legend-dot { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; border: 1.5px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); flex-shrink: 0; }
+    .legend-status { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12px; color: #374151; }
+    .legend-bar { width: 16px; height: 4px; border-radius: 2px; flex-shrink: 0; }
+    .legend-region-item { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12px; color: #374151; }
+    .legend-region-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); flex-shrink: 0; }
+    .legend-region-bar { width: 16px; height: 10px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.15); flex-shrink: 0; }
+    @media (max-width: 640px) {
+      .map-legend { bottom: 10px; right: 10px; max-width: 160px; }
+      .legend-item, .legend-status { font-size: 11px; }
+      .legend-dot { width: 18px; height: 18px; font-size: 10px; }
+    }
+
+    /* 项目列表侧边栏 */
+    .project-sidebar {
+      position: fixed; left: 0; top: 52px; bottom: 0; width: 260px; z-index: 95;
+      background: white; box-shadow: 2px 0 8px rgba(0,0,0,0.08);
+      display: flex; flex-direction: column;
+      transition: transform 0.25s ease;
+    }
+    .project-sidebar.collapsed { transform: translateX(-100%); }
+    .sidebar-header {
+      padding: 8px 10px; border-bottom: 1px solid #e5e7eb;
+      display: flex; align-items: center; justify-content: space-between;
+      background: #f9fafb; flex-shrink: 0;
+    }
+    .sidebar-header-title { font-size: 13px; font-weight: 600; color: #1f2937; }
+    .sidebar-header-actions { display: flex; align-items: center; gap: 4px; }
+    .sidebar-btn { border: none; cursor: pointer; border-radius: 5px; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+    .sidebar-btn-add { background: #3b82f6; color: white; width: 26px; height: 26px; }
+    .sidebar-btn-add:hover { background: #2563eb; }
+    .sidebar-btn-toggle { background: #e5e7eb; color: #4b5563; width: 26px; height: 26px; }
+    .sidebar-btn-toggle:hover { background: #d1d5db; }
+    .sidebar-body { flex: 1; overflow-y: auto; padding: 6px; }
+    .sidebar-body::-webkit-scrollbar { width: 4px; }
+    .sidebar-body::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
+    .sidebar-item {
+      padding: 8px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 4px;
+      border: 1px solid transparent; transition: all 0.15s;
+    }
+    .sidebar-item:hover { background: #f3f4f6; border-color: #e5e7eb; }
+    .sidebar-item.active { background: #eff6ff; border-color: #93c5fd; }
+    .sidebar-item-row1 { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+    .sidebar-item-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; border: 1.5px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.15); flex-shrink: 0; }
+    .sidebar-item-name { font-size: 12px; font-weight: 600; color: #1f2937; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sidebar-item-status { font-size: 10px; padding: 1px 5px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; font-weight: 500; }
+    .sidebar-item-row2 { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #6b7280; padding-left: 28px; }
+    .sidebar-item-actions { display: flex; gap: 4px; margin-top: 5px; padding-left: 28px; }
+    .sidebar-action-btn { padding: 2px 10px; border-radius: 4px; font-size: 11px; border: none; cursor: pointer; opacity: 0; transition: opacity 0.15s; }
+    .sidebar-item:hover .sidebar-action-btn { opacity: 1; }
+    .sidebar-action-btn.edit { background: #dbeafe; color: #2563eb; }
+    .sidebar-action-btn.edit:hover { background: #bfdbfe; }
+    .sidebar-action-btn.delete { background: #fee2e2; color: #dc2626; }
+    .sidebar-action-btn.delete:hover { background: #fecaca; }
+    .sidebar-empty { text-align: center; padding: 30px 12px; color: #9ca3af; font-size: 12px; }
+    .sidebar-filters { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; display: flex; gap: 4px; flex-shrink: 0; background: #fafafa; }
+    .sidebar-filter-select {
+      flex: 1; border: 1px solid #d1d5db; border-radius: 5px; font-size: 11px;
+      padding: 3px 4px; background: white; color: #374151; cursor: pointer; outline: none;
+      max-width: 50%;
+    }
+    .sidebar-filter-select:focus { border-color: #3b82f6; }
+    .sidebar-filter-select::-ms-expand { display: none; }
+    .sidebar-show-btn {
+      position: fixed; left: 0; top: 58px; z-index: 96;
+      background: white; border: 1px solid #e5e7eb; border-left: none;
+      width: 28px; min-height: 100px; border-radius: 0 8px 8px 0; cursor: pointer;
+      box-shadow: 2px 1px 6px rgba(0,0,0,0.08); display: none;
+      flex-direction: column; align-items: center; justify-content: center;
+      padding: 8px 2px; color: #6b7280; gap: 4px;
+    }
+    .sidebar-show-btn:hover { background: #f9fafb; color: #374151; }
+    .sidebar-show-btn .show-btn-text {
+      writing-mode: vertical-rl; text-orientation: upright; font-size: 12px; font-weight: 600; letter-spacing: 2px;
+    }
+    .sidebar-show-btn .show-btn-arrow { font-size: 13px; }
+    body:not(.sb-collapsed) .search-box { left: 276px; transform: none; width: calc(100% - 300px); }
+    body.sb-collapsed .search-box { left: 44px; transform: none; width: calc(100% - 60px); }
+    @media (max-width: 640px) {
+      .project-sidebar { width: 200px; }
+      .sidebar-item-name { font-size: 11px; }
+      body:not(.sb-collapsed) .search-box { left: 208px; width: calc(100% - 224px); }
+    }
+
+    /* 底部友情链接栏 */
+    .footer-links {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+      background: #1f2937; color: #d1d5db;
+      display: flex; align-items: center; justify-content: center;
+      gap: 24px; padding: 8px 16px; font-size: 13px;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.15);
+    }
+    .footer-links a {
+      color: #93c5fd; text-decoration: none; transition: color 0.15s;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .footer-links a:hover { color: #60a5fa; text-decoration: underline; }
+    .footer-links .footer-sep { color: #4b5563; }
+    .footer-links .footer-label { color: #9ca3af; font-size: 12px; }
+    .footer-links .wechat-btn {
+      background: none; border: 1px solid #4b5563; color: #93c5fd;
+      padding: 2px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    @media (max-width: 640px) {
+      .footer-links { gap: 12px; font-size: 12px; padding: 6px 8px; }
+      .footer-links .footer-label { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- 顶部栏 -->
+<div class="top-bar">
+  <div class="top-bar-left">
+    <h1 class="font-bold text-gray-800" style="display:flex;align-items:center;gap:6px;margin:0;"><img src="logo.png" style="width:24px;height:24px;border-radius:3px;" alt="logo" /> 中电建路桥总包公司工程项目地图</h1>
+  </div>
+  <div class="top-bar-center">
+    <div class="slogan">
+      <div class="slogan-text">诚信，担当，创新，共赢，以路破局，以己作桥。</div>
+    </div>
+  </div>
+  <div class="top-bar-right">
+    <div id="clock-display" style="color:#374151;font-size:13px;font-weight:500;margin-right:12px;white-space:nowrap;text-align:right;line-height:1.3;">
+      <div id="clock-date" style="font-size:12px;color:#9ca3af;"></div>
+      <div id="clock-time" style="font-size:15px;font-family:'Courier New',monospace;color:#1e3a8a;"></div>
+    </div>
+    <button id="btn-add" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 whitespace-nowrap">
+      + 添加项目
+    </button>
+  </div>
+</div>
+
+<!-- 搜索框 -->
+<div class="search-box">
+  <svg width="16" height="16" fill="none" stroke="#9ca3af" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+  <input id="search-input" type="text" placeholder="搜索项目名称或城市..." />
+</div>
+
+<!-- 项目列表侧边栏 -->
+<div id="project-sidebar" class="project-sidebar">
+  <div class="sidebar-header">
+    <span class="sidebar-header-title">📋 项目列表 <span id="sidebar-count" style="color:#9ca3af;font-weight:normal">(0)</span></span>
+    <div class="sidebar-header-actions">
+      <button class="sidebar-btn sidebar-btn-add" onclick="openModal('add')" title="添加项目">+</button>
+      <button class="sidebar-btn sidebar-btn-toggle" onclick="toggleSidebar()" title="收起列表">◀</button>
+    </div>
+  </div>
+  <div class="sidebar-filters">
+    <select id="filter-type" class="sidebar-filter-select" onchange="applySidebarFilters()">
+      <option value="">全部类型</option>
+      <option value="铁路工程">铁路工程</option>
+      <option value="公路工程">公路工程</option>
+      <option value="市政工程">市政工程</option>
+      <option value="房建工程">房建工程</option>
+      <option value="文旅项目">文旅项目</option>
+      <option value="水利水电">水利水电</option>
+      <option value="新能源">新能源</option>
+      <option value="农业工程">农业工程</option>
+      <option value="其他">其他</option>
+    </select>
+    <select id="filter-status" class="sidebar-filter-select" onchange="applySidebarFilters()">
+      <option value="">全部状态</option>
+      <option value="规划中">规划中</option>
+      <option value="未开工">未开工</option>
+      <option value="进行中">进行中</option>
+      <option value="暂停">暂停</option>
+      <option value="已完工">已完工</option>
+    </select>
+  </div>
+  <div class="sidebar-body" id="sidebar-list">
+    <div class="sidebar-empty">加载中...</div>
+  </div>
+</div>
+<button id="sidebar-show-btn" class="sidebar-show-btn" onclick="toggleSidebar()" title="展开项目列表">
+  <span class="show-btn-text">项目列表</span>
+  <span class="show-btn-arrow">▶</span>
+</button>
+
+<!-- 地图容器 -->
+<div id="map-container"></div>
+
+<!-- 地图图例 -->
+<div id="map-legend" class="map-legend">
+  <div class="map-legend-header" onclick="toggleLegend()">
+    <span>📋 图例说明</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="map-legend-body">
+    <div class="legend-section-title">项目类型</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#1e40af">🚄</span>铁路工程</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#059669">🛣️</span>公路工程</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#7c3aed">🏙️</span>市政工程</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#d97706">🏗️</span>房建工程</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#db2777">🎡</span>文旅项目</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#0284c7">💧</span>水利水电</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#f97316">🌞</span>新能源</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#16a34a">🌾</span>农业工程</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#6b7280">📍</span>其他</div>
+    <div class="legend-section-title">项目状态（标签边框色）</div>
+    <div class="legend-status"><span class="legend-bar" style="background:#8b5cf6"></span>规划中</div>
+    <div class="legend-status"><span class="legend-bar" style="background:#3b82f6"></span>未开工</div>
+    <div class="legend-status"><span class="legend-bar" style="background:#10b981"></span>进行中</div>
+    <div class="legend-status"><span class="legend-bar" style="background:#f59e0b"></span>暂停</div>
+    <div class="legend-status"><span class="legend-bar" style="background:#6b7280"></span>已完工</div>
+    <div class="legend-section-title">区域公司（省份底色 + 总部标记）</div>
+    <div class="legend-region-item"><span class="legend-region-bar" style="background:#0891b2"></span>总包公司（北京）</div>
+    <div class="legend-region-item"><span class="legend-region-bar" style="background:#3b82f6"></span>北方公司（北京）</div>
+    <div class="legend-region-item"><span class="legend-region-bar" style="background:#10b981"></span>华东公司（杭州）</div>
+    <div class="legend-region-item"><span class="legend-region-bar" style="background:#f59e0b"></span>华中公司（武汉）</div>
+    <div class="legend-region-item"><span class="legend-region-bar" style="background:#8b5cf6"></span>西部公司（成都）</div>
+    <div class="legend-region-item"><span class="legend-region-bar" style="background:#ef4444"></span>南方公司（广州）</div>
+    <div class="legend-region-item"><span class="legend-region-dot" style="background:#fff;border-color:#333"></span>总部所在地</div>
+  </div>
+</div>
+
+<!-- 项目详情/编辑弹窗 -->
+<div id="modal" class="modal-overlay hidden">
+  <div class="modal-content">
+    <div class="flex justify-between items-center mb-4">
+      <h2 id="modal-title" class="text-lg font-bold text-gray-800"></h2>
+      <button id="btn-close" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+    </div>
+    <form id="project-form">
+      <input type="hidden" id="field-id" />
+      
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1">项目名称 <span class="text-red-500">*</span></label>
+        <input id="field-name" type="text" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="请输入项目名称" />
+      </div>
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1">项目地点 <span class="text-red-500">*</span></label>
+        <div class="flex gap-2">
+          <select id="field-province" required class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+            <option value="">— 省/区 —</option>
+          </select>
+          <select id="field-city" required class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" disabled>
+            <option value="">— 市/县 —</option>
+          </select>
+          <button type="button" id="btn-pick-map" class="whitespace-nowrap bg-green-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-green-700">地图选点</button>
+        </div>
+        <p id="coord-display" class="text-xs text-gray-400 mt-1"></p>
+      </div>
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1">项目类型</label>
+        <select id="field-type" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+          <option value="市政工程">市政工程</option>
+          <option value="公路工程">公路工程</option>
+          <option value="铁路工程">铁路工程</option>
+          <option value="房建工程">房建工程</option>
+          <option value="文旅项目">文旅项目</option>
+          <option value="水利水电">水利水电</option>
+          <option value="新能源">新能源</option>
+          <option value="农业工程">农业工程</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1">项目状态</label>
+        <select id="field-status" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+          <option value="规划中">规划中</option>
+          <option value="未开工">未开工</option>
+          <option value="进行中">进行中</option>
+          <option value="暂停">暂停</option>
+          <option value="已完工">已完工</option>
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1">合同额（万元）</label>
+        <input id="field-amount" type="number" step="0.01" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="请输入合同额" />
+      </div>
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1">项目规模</label>
+        <input id="field-scale" type="text" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="如：70栋智慧大棚约108万㎡" />
+      </div>
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1">承建方</label>
+        <input id="field-contractor" type="text" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="请输入承建单位" />
+      </div>
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1">项目概况</label>
+        <textarea id="field-overview" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" rows="3" placeholder="项目主要内容、建设背景等概况"></textarea>
+      </div>
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1">备注</label>
+        <textarea id="field-remark" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" rows="3" placeholder="其他备注信息"></textarea>
+      </div>
+      <div class="flex gap-3 mt-6">
+        <button type="button" id="btn-delete" class="hidden px-4 py-2 rounded-lg text-sm border border-red-300 text-red-600 hover:bg-red-50">删除</button>
+        <div class="flex-1"></div>
+        <button type="button" id="btn-cancel" class="px-4 py-2 rounded-lg text-sm border border-gray-300 text-gray-700 hover:bg-gray-50">取消</button>
+        <button type="submit" class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 提示消息 -->
+<div id="toast" class="hidden"></div>
+
+<!-- 底部友情链接栏 -->
+<div class="footer-links">
+  <span class="footer-label">友情链接：</span>
+  <a href="https://www.powerchina.cn" target="_blank" rel="noopener">🌐 中国电建官网</a>
+  <span class="footer-sep">|</span>
+  <a href="http://www.lq.powerchina.cn" target="_blank" rel="noopener">🌐 中电建路桥集团官网</a>
+  <span class="footer-sep">|</span>
+  <a href="https://bid.powerchina.cn" target="_blank" rel="noopener">🌐 中国电建阳光采购网</a>
+</div>
+
+<script>
+// ========== 配置区域 ==========
+// 请替换为你自己的高德地图 Key（申请地址：https://lbs.amap.com/api/javascript-api/guide/jsapi-loader）
+const AMAP_KEY = 'be6a46c78f97d20c77b9cbc3270dc051';
+
+// LeanCloud 配置（可选，不配置则使用本地存储）
+// 注册地址：https://leancloud.cn/register
+const LC_APP_ID = 'your-app-id-here';
+const LC_APP_KEY = 'your-app-key-here';
+const LC_SERVER_URL = 'https://your-server-url.leancloud.cn';
+
+// ========== 省市两级数据（含坐标）==========
+const PROVINCE_CITY_DATA = {
+  '北京市': { '北京市': [116.41, 39.90] },
+  '天津市': { '天津市': [117.20, 39.13] },
+  '河北省': {
+    '石家庄市': [114.51, 38.04], '唐山市': [118.18, 39.63], '秦皇岛市': [119.60, 39.93],
+    '邯郸市': [114.54, 36.62], '邢台市': [114.51, 37.07], '保定市': [115.46, 38.87],
+    '张家口市': [114.89, 40.77], '承德市': [117.94, 40.99], '沧州市': [116.84, 38.31],
+    '廊坊市': [116.70, 39.52], '衡水市': [115.67, 37.73], '烟台市': [121.39, 37.54],
+  },
+  '山西省': {
+    '太原市': [112.55, 37.87], '大同市': [113.30, 40.08], '阳泉市': [113.58, 37.86],
+    '长治市': [113.12, 36.20], '晋城市': [112.85, 35.49], '朔州市': [112.43, 39.33],
+    '晋中市': [112.75, 37.69], '运城市': [111.01, 35.03], '忻州市': [112.73, 38.42],
+    '临汾市': [111.52, 36.08], '吕梁市': [111.14, 37.52],
+  },
+  '内蒙古自治区': {
+    '呼和浩特市': [111.75, 40.84], '包头市': [109.84, 40.66], '乌海市': [106.82, 39.67],
+    '赤峰市': [118.89, 42.26], '通辽市': [122.24, 43.65], '鄂尔多斯市': [109.99, 39.82],
+    '呼伦贝尔市': [119.77, 49.22], '巴彦淖尔市': [107.39, 40.74], '乌兰察布市': [113.13, 41.00],
+    '四子王旗': [111.70, 41.53], '锡林浩特市': [116.05, 43.93],
+  },
+  '辽宁省': {
+    '沈阳市': [123.43, 41.81], '大连市': [121.62, 38.91], '鞍山市': [123.00, 41.11],
+    '抚顺市': [123.96, 41.87], '本溪市': [123.77, 41.30], '丹东市': [124.35, 40.00],
+    '锦州市': [121.13, 41.10], '营口市': [122.23, 40.67], '阜新市': [121.67, 42.02],
+    '辽阳市': [123.17, 41.27], '盘锦市': [122.07, 41.12], '铁岭市': [123.84, 42.29],
+    '朝阳市': [120.45, 41.57], '葫芦岛市': [120.84, 40.71],
+  },
+  '吉林省': {
+    '长春市': [125.32, 43.82], '吉林市': [126.55, 43.84], '四平市': [124.35, 43.17],
+    '辽源市': [125.15, 42.88], '通化市': [125.94, 41.73], '白山市': [126.42, 41.94],
+    '松原市': [124.82, 45.14], '白城市': [122.84, 45.62], '延吉市': [129.51, 42.91],
+  },
+  '黑龙江省': {
+    '哈尔滨市': [126.64, 45.75], '齐齐哈尔市': [123.95, 47.35], '鸡西市': [130.97, 45.30],
+    '鹤岗市': [130.30, 47.33], '双鸭山市': [131.16, 46.65], '大庆市': [125.10, 46.59],
+    '伊春市': [128.90, 47.73], '佳木斯市': [130.32, 46.80], '七台河市': [131.00, 45.77],
+    '牡丹江市': [129.63, 44.55], '黑河市': [127.53, 50.24], '绥化市': [126.97, 46.65],
+  },
+  '上海市': { '上海市': [121.47, 31.23] },
+  '江苏省': {
+    '南京市': [118.78, 32.06], '无锡市': [120.30, 31.57], '徐州市': [117.18, 34.26],
+    '常州市': [119.97, 31.78], '苏州市': [120.62, 31.30], '南通市': [120.86, 32.01],
+    '连云港市': [119.22, 34.60], '淮安市': [119.02, 33.51], '盐城市': [120.16, 33.35],
+    '扬州市': [119.42, 32.39], '镇江市': [119.45, 32.20], '泰州市': [119.92, 32.46],
+    '宿迁市': [118.28, 33.96],
+  },
+  '浙江省': {
+    '杭州市': [120.16, 30.27], '宁波市': [121.55, 29.87], '温州市': [120.70, 28.00],
+    '嘉兴市': [120.76, 30.75], '湖州市': [120.10, 30.87], '绍兴市': [120.58, 30.03],
+    '金华市': [119.65, 29.08], '衢州市': [118.87, 28.94], '舟山市': [122.11, 30.03],
+    '台州市': [121.43, 28.66], '丽水市': [119.92, 28.45],
+  },
+  '安徽省': {
+    '合肥市': [117.27, 31.86], '芜湖市': [118.38, 31.33], '蚌埠市': [117.36, 32.92],
+    '淮南市': [117.02, 32.63], '马鞍山市': [118.51, 31.69], '淮北市': [116.80, 33.97],
+    '铜陵市': [117.81, 30.95], '安庆市': [117.06, 30.54], '黄山市': [118.34, 29.73],
+    '滁州市': [118.32, 32.30], '阜阳市': [115.81, 32.89], '宿州市': [116.98, 33.63],
+    '六安市': [116.51, 31.74], '亳州市': [115.78, 33.85], '池州市': [117.49, 30.66],
+    '宣城市': [118.76, 30.95],
+  },
+  '福建省': {
+    '福州市': [119.30, 26.08], '厦门市': [118.09, 24.48], '莆田市': [119.01, 25.43],
+    '三明市': [117.64, 26.27], '泉州市': [118.67, 24.88], '漳州市': [117.65, 24.51],
+    '南平市': [118.18, 26.64], '龙岩市': [117.01, 25.10], '宁德市': [119.53, 26.66],
+  },
+  '江西省': {
+    '南昌市': [115.89, 28.68], '景德镇市': [117.18, 29.27], '萍乡市': [113.85, 27.60],
+    '九江市': [116.00, 29.71], '新余市': [114.92, 27.82], '鹰潭市': [117.07, 28.27],
+    '赣州市': [114.93, 25.83], '吉安市': [114.99, 27.12], '宜春市': [114.39, 27.80],
+    '抚州市': [116.36, 27.95], '上饶市': [117.97, 28.45],
+  },
+  '山东省': {
+    '济南市': [117.00, 36.65], '青岛市': [120.38, 36.07], '淄博市': [118.05, 36.82],
+    '枣庄市': [117.32, 34.81], '东营市': [118.67, 37.43], '烟台市': [121.39, 37.54],
+    '潍坊市': [119.16, 36.70], '济宁市': [116.59, 35.41], '泰安市': [117.09, 36.19],
+    '威海市': [122.12, 37.51], '日照市': [119.53, 35.38], '临沂市': [118.35, 35.05],
+    '德州市': [116.36, 37.45], '聊城市': [115.99, 36.46], '滨州市': [118.03, 37.38],
+    '菏泽市': [115.48, 35.24],
+  },
+  '河南省': {
+    '郑州市': [113.62, 34.75], '开封市': [114.31, 34.80], '洛阳市': [112.45, 34.62],
+    '平顶山市': [113.19, 33.77], '安阳市': [114.40, 36.10], '鹤壁市': [114.30, 35.75],
+    '新乡市': [113.93, 35.30], '焦作市': [113.24, 35.22], '濮阳市': [115.03, 35.77],
+    '许昌市': [113.85, 34.04], '漯河市': [114.02, 33.58], '三门峡市': [111.20, 34.77],
+    '南阳市': [112.53, 33.00], '商丘市': [115.65, 34.44], '信阳市': [114.07, 32.13],
+    '周口市': [114.65, 33.63], '驻马店市': [114.02, 33.00],
+  },
+  '湖北省': {
+    '武汉市': [114.31, 30.59], '黄石市': [115.04, 30.20], '十堰市': [110.80, 32.63],
+    '宜昌市': [111.29, 30.69], '襄阳市': [112.14, 32.04], '鄂州市': [114.89, 30.39],
+    '荆门市': [112.20, 31.04], '孝感市': [113.92, 30.93], '荆州市': [112.24, 30.33],
+    '黄冈市': [114.87, 30.45], '咸宁市': [114.32, 29.84], '随州市': [113.38, 31.69],
+    '恩施市': [109.49, 30.28],
+  },
+  '湖南省': {
+    '长沙市': [112.93, 28.23], '株洲市': [113.13, 27.83], '湘潭市': [112.94, 27.83],
+    '衡阳市': [112.57, 26.89], '邵阳市': [111.47, 27.24], '岳阳市': [113.13, 29.36],
+    '常德市': [111.69, 29.04], '张家界市': [110.48, 29.12], '益阳市': [112.36, 28.55],
+    '郴州市': [113.02, 25.79], '永州市': [111.61, 26.43], '怀化市': [110.00, 27.55],
+    '娄底市': [112.00, 27.73], '吉首市': [109.74, 28.31],
+  },
+  '广东省': {
+    '广州市': [113.27, 23.13], '韶关市': [113.60, 24.81], '深圳市': [114.06, 22.55],
+    '珠海市': [113.58, 22.27], '汕头市': [116.68, 23.35], '佛山市': [113.12, 23.02],
+    '江门市': [113.08, 22.58], '湛江市': [110.36, 21.27], '茂名市': [110.93, 21.66],
+    '肇庆市': [112.47, 23.05], '惠州市': [114.41, 23.11], '梅州市': [116.12, 24.29],
+    '汕尾市': [115.37, 22.79], '河源市': [114.70, 23.74], '阳江市': [111.98, 21.86],
+    '清远市': [113.06, 23.68], '东莞市': [113.74, 23.05], '中山市': [113.39, 22.52],
+    '潮州市': [116.63, 23.68], '揭阳市': [116.37, 23.55], '云浮市': [112.04, 22.93],
+  },
+  '广西壮族自治区': {
+    '南宁市': [108.37, 22.82], '柳州市': [109.43, 24.33], '桂林市': [110.30, 25.27],
+    '梧州市': [111.28, 23.47], '北海市': [109.12, 21.48], '防城港市': [108.34, 21.69],
+    '钦州市': [108.62, 21.95], '贵港市': [109.60, 23.10], '玉林市': [110.15, 22.65],
+    '百色市': [106.62, 23.90], '贺州市': [111.55, 24.41], '河池市': [108.06, 24.70],
+    '来宾市': [109.23, 23.73], '崇左市': [107.36, 22.40],
+  },
+  '海南省': {
+    '海口市': [110.20, 20.04], '三亚市': [109.51, 18.25], '三沙市': [112.33, 16.83],
+    '儋州市': [109.58, 19.52],
+  },
+  '重庆市': { '重庆市': [106.55, 29.56] },
+  '四川省': {
+    '成都市': [104.07, 30.67], '自贡市': [104.78, 29.35], '攀枝花市': [101.72, 26.58],
+    '泸州市': [105.44, 28.87], '德阳市': [104.40, 31.13], '绵阳市': [104.74, 31.46],
+    '广元市': [105.84, 32.44], '遂宁市': [105.57, 30.53], '内江市': [105.06, 29.58],
+    '乐山市': [103.77, 29.55], '南充市': [106.11, 30.84], '眉山市': [103.85, 30.08],
+    '宜宾市': [104.64, 28.75], '广安市': [106.63, 30.47], '达州市': [107.47, 31.21],
+    '雅安市': [103.00, 29.98], '巴中市': [106.75, 31.85], '资阳市': [104.63, 30.13],
+    '西昌市': [102.27, 27.90],
+  },
+  '贵州省': {
+    '贵阳市': [106.63, 26.65], '六盘水市': [104.83, 26.60], '遵义市': [106.93, 27.73],
+    '安顺市': [105.95, 26.25], '毕节市': [105.29, 27.30], '铜仁市': [109.18, 27.72],
+    '凯里市': [107.98, 26.59], '都匀市': [107.52, 26.26], '兴义市': [104.90, 25.09],
+  },
+  '云南省': {
+    '昆明市': [102.83, 24.88], '曲靖市': [103.80, 25.50], '玉溪市': [102.55, 24.35],
+    '保山市': [99.17, 25.11], '昭通市': [103.72, 27.34], '丽江市': [100.23, 26.86],
+    '普洱市': [100.97, 22.78], '临沧市': [100.09, 23.88], '楚雄市': [101.55, 25.04],
+    '个旧市': [103.16, 23.36], '大理市': [100.22, 25.60], '景洪市': [100.80, 22.01],
+  },
+  '西藏自治区': {
+    '拉萨市': [91.11, 29.97], '日喀则市': [88.88, 29.27], '昌都市': [97.17, 31.14],
+    '林芝市': [94.36, 29.65], '山南市': [91.77, 29.24], '那曲市': [92.05, 31.48],
+  },
+  '陕西省': {
+    '西安市': [108.95, 34.27], '铜川市': [109.03, 35.09], '宝鸡市': [107.24, 34.36],
+    '咸阳市': [108.71, 34.33], '渭南市': [109.51, 34.50], '延安市': [109.49, 36.60],
+    '汉中市': [107.03, 33.07], '榆林市': [109.73, 38.28], '安康市': [109.03, 32.68],
+    '商洛市': [109.94, 33.87],
+  },
+  '甘肃省': {
+    '兰州市': [103.84, 36.06], '嘉峪关市': [98.28, 39.77], '金昌市': [102.19, 38.52],
+    '白银市': [104.14, 36.54], '天水市': [105.72, 34.58], '武威市': [102.64, 37.93],
+    '张掖市': [100.45, 38.93], '平凉市': [106.67, 35.54], '酒泉市': [98.50, 39.73],
+    '庆阳市': [107.64, 35.73], '定西市': [104.63, 35.58], '陇南市': [104.92, 33.39],
+    '临夏市': [103.21, 35.60], '合作市': [102.91, 35.00],
+  },
+  '青海省': {
+    '西宁市': [101.78, 36.62], '海东市': [102.10, 36.50], '海西市': [97.37, 37.37],
+    '海南州': [100.62, 36.28], '海北州': [100.90, 36.95], '黄南州': [102.02, 35.52],
+    '果洛州': [100.24, 34.47], '玉树市': [97.01, 33.00],
+  },
+  '宁夏回族自治区': {
+    '银川市': [106.23, 38.49], '石嘴山市': [106.38, 39.02], '吴忠市': [106.20, 37.99],
+    '固原市': [106.28, 36.00], '中卫市': [105.19, 37.50],
+  },
+  '新疆维吾尔自治区': {
+    '乌鲁木齐市': [87.68, 43.77], '克拉玛依市': [84.87, 45.59], '吐鲁番市': [89.19, 42.95],
+    '哈密市': [93.51, 42.82], '昌吉市': [87.31, 44.02], '博乐市': [82.07, 44.90],
+    '库尔勒市': [86.15, 41.76], '阿克苏市': [80.26, 41.17], '阿图什市': [76.17, 39.72],
+    '喀什市': [75.99, 39.47], '和田市': [79.92, 37.11], '伊宁市': [81.33, 43.91],
+    '塔城市': [82.99, 46.75], '阿勒泰市': [88.14, 47.85], '石河子市': [86.04, 44.30],
+  },
+};
+
+// 当前选中的坐标（城市下拉或地图选点设置）
+let pickedLng = null;
+let pickedLat = null;
+let pickingFromMap = false; // 是否正在地图选点模式
+
+// ========== LeanCloud 初始化 ==========
+let lcReady = false;
+try {
+  if (LC_APP_ID !== 'your-app-id-here') {
+    AV.init({ appId: LC_APP_ID, appKey: LC_APP_KEY, serverURL: LC_SERVER_URL });
+    lcReady = true;
+    console.log('✅ LeanCloud 已初始化');
+  }
+} catch(e) { console.warn('LeanCloud 未配置，使用本地存储模式'); }
+
+// ========== 数据操作层 ==========
+const PROJECTS_KEY = 'project_map_data';
+
+function loadProjects() {
+  if (lcReady) {
+    const query = new AV.Query('Project');
+    return query.find().then(results =>
+      results.map(p => ({
+        id: p.id,
+        name: p.get('name'),
+        city: p.get('city'),
+        lng: p.get('lng'),
+        lat: p.get('lat'),
+        type: p.get('type'),
+        status: p.get('status'),
+        amount: p.get('amount'),
+        scale: p.get('scale'),
+        contractor: p.get('contractor'),
+        overview: p.get('overview'),
+        remark: p.get('remark'),
+      }))
+    ).catch(err => {
+      console.warn('LeanCloud 读取失败，使用本地数据', err);
+      return loadLocal();
+    });
+  }
+  return Promise.resolve(loadLocal());
+}
+
+function loadLocal() {
+  try { return JSON.parse(localStorage.getItem(PROJECTS_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveLocal(projects) {
+  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+}
+
+async function addProject(data) {
+  if (lcReady) {
+    const Project = AV.Object.extend('Project');
+    const obj = new Project();
+    Object.keys(data).forEach(k => data[k] !== undefined && obj.set(k, data[k]));
+    const saved = await obj.save();
+    return { ...data, id: saved.id };
+  }
+  const projects = loadLocal();
+  const item = { ...data, id: 'local_' + Date.now() };
+  projects.push(item);
+  saveLocal(projects);
+  return item;
+}
+
+async function updateProject(id, data) {
+  if (lcReady && !id.startsWith('local_')) {
+    const obj = AV.Object.createWithoutData('Project', id);
+    Object.keys(data).forEach(k => data[k] !== undefined && obj.set(k, data[k]));
+    await obj.save();
+    return { ...data, id };
+  }
+  const projects = loadLocal();
+  const idx = projects.findIndex(p => p.id === id);
+  if (idx >= 0) { projects[idx] = { ...projects[idx], ...data }; }
+  saveLocal(projects);
+  return { ...data, id };
+}
+
+async function deleteProject(id) {
+  if (lcReady && !id.startsWith('local_')) {
+    await AV.Object.createWithoutData('Project', id).destroy();
+    return id;
+  }
+  const projects = loadLocal().filter(p => p.id !== id);
+  saveLocal(projects);
+  return id;
+}
+
+// ========== 初始项目数据（来自项目清单）==========
+const SEED_PROJECTS = [
+  {
+    name: '潍烟铁路项目',
+    city: '烟台市',
+    lng: 121.39, lat: 37.54,
+    type: '铁路工程',
+    status: '已完工',
+    amount: 580000,
+    scale: '79公里',
+    contractor: '济青公司',
+    remark: '',
+  },
+  {
+    name: '临哈铁路额济纳至哈密段扩能改造工程',
+    city: '呼和浩特市',
+    lng: 111.75, lat: 40.84,
+    type: '铁路工程',
+    status: '未开工',
+    amount: 1998000,
+    scale: '640公里',
+    contractor: '临哈铁路有限公司',
+    remark: '设计单位：中铁设计咨询、铁一院、铁五院',
+  },
+  {
+    name: '伊宁至阿克苏铁路',
+    city: '乌鲁木齐市',
+    lng: 87.68, lat: 43.77,
+    type: '铁路工程',
+    status: '未开工',
+    amount: 3771600,
+    scale: '458公里',
+    contractor: '中国铁路乌鲁木齐局',
+    remark: '建设指挥部：中国铁路乌鲁木齐局库尔勒指挥部',
+  },
+  {
+    name: '黑山梁铁路专用线',
+    city: '兰州市',
+    lng: 103.84, lat: 36.06,
+    type: '铁路工程',
+    status: '未开工',
+    amount: 22006,
+    scale: '2.523公里',
+    contractor: '酒泉市隆冠通铁路运输有限公司',
+    remark: '设计单位：铁一院',
+  },
+  {
+    name: '驻马店金顶山旅游景区升级建设项目',
+    city: '驻马店市',
+    lng: 114.02, lat: 33.0,
+    type: '文旅项目',
+    status: '未开工',
+    amount: 400000,
+    scale: '',
+    contractor: '驻马店国开科发旅游发展有限公司',
+    remark: '设计单位：中铁城际规划建设有限公司',
+  },
+];
+
+const SEED_FLAG_KEY = 'project_map_seeded_v4';
+
+// 导入初始数据
+async function seedProjects() {
+  // 检查是否已经导入过
+  if (localStorage.getItem(SEED_FLAG_KEY)) {
+    console.log('初始数据已导入过，跳过');
+    return;
+  }
+
+  // 清除旧版本的可能残留数据
+  localStorage.removeItem('project_map_seeded');
+  localStorage.removeItem(PROJECTS_KEY);
+
+  console.log('开始导入初始项目数据...');
+  for (const p of SEED_PROJECTS) {
+    await addProject(p);
+    console.log('已导入: ' + p.name);
+  }
+  localStorage.setItem(SEED_FLAG_KEY, '1');
+  console.log('初始数据导入完成，共 ' + SEED_PROJECTS.length + ' 个项目');
+}
+
+// ========== 高德地图逻辑 ==========
+let map = null;
+let markers = [];
+let infoWindow = null;
+let currentProjects = [];
+let regionPolygons = [];
+let regionHQMarkers = [];
+
+// 状态对应图标颜色
+const STATUS_COLORS = {
+  '规划中': '#8b5cf6',
+  '未开工': '#3b82f6',
+  '进行中': '#10b981',
+  '暂停': '#f59e0b',
+  '已完工': '#6b7280',
+};
+
+// ========== 区域公司配置 ==========
+const REGION_COMPANIES = [
+  {
+    name: '总包公司',
+    hq: '北京',
+    hqCoord: [116.41, 39.90],
+    color: '#0891b2',
+    provinces: []
+  },
+  {
+    name: '北方公司',
+    hq: '北京',
+    hqCoord: [116.46, 39.84],
+    color: '#3b82f6',
+    provinces: ['北京市', '山东省', '天津市', '河北省', '内蒙古自治区', '山西省', '辽宁省', '吉林省', '黑龙江省']
+  },
+  {
+    name: '华东公司',
+    hq: '杭州',
+    hqCoord: [120.16, 30.27],
+    color: '#10b981',
+    provinces: ['浙江省', '江苏省', '安徽省', '上海市', '福建省', '台湾省']
+  },
+  {
+    name: '华中公司',
+    hq: '武汉',
+    hqCoord: [114.31, 30.59],
+    color: '#f59e0b',
+    provinces: ['湖北省', '河南省', '湖南省', '江西省']
+  },
+  {
+    name: '西部公司',
+    hq: '成都',
+    hqCoord: [104.07, 30.67],
+    color: '#8b5cf6',
+    provinces: ['四川省', '重庆市', '陕西省', '甘肃省', '青海省', '宁夏回族自治区', '新疆维吾尔自治区', '西藏自治区']
+  },
+  {
+    name: '南方公司',
+    hq: '广州',
+    hqCoord: [113.27, 23.13],
+    color: '#ef4444',
+    provinces: ['广东省', '广西壮族自治区', '海南省', '贵州省', '云南省', '香港特别行政区', '澳门特别行政区']
+  }
+];
+
+function getStatusColor(status) {
+  return STATUS_COLORS[status] || '#3b82f6';
+}
+
+// 项目类型对应图标和颜色
+const TYPE_ICONS = {
+  '铁路工程': { icon: '🚄', bg: '#1e40af' },
+  '公路工程': { icon: '🛣️', bg: '#059669' },
+  '市政工程': { icon: '🏙️', bg: '#7c3aed' },
+  '房建工程': { icon: '🏗️', bg: '#d97706' },
+  '文旅项目': { icon: '🎡', bg: '#db2777' },
+  '水利工程': { icon: '🌊', bg: '#0891b2' },
+  '水利水电': { icon: '💧', bg: '#0284c7' },
+  '电力工程': { icon: '⚡', bg: '#eab308' },
+  '新能源':   { icon: '🌞', bg: '#f97316' },
+  '农业工程': { icon: '🌾', bg: '#16a34a' },
+  '其他':     { icon: '📍', bg: '#6b7280' },
+};
+
+function getTypeIcon(type) {
+  return TYPE_ICONS[type] || TYPE_ICONS['其他'];
+}
+
+// 创建自定义标注图标（类型图标 + 上方项目名称）
+function createMarkerIcon(type, status, name) {
+  const typeInfo = getTypeIcon(type);
+  const statusColor = getStatusColor(status);
+  // 名称过长截断
+  const maxLen = 8;
+  const shortName = name.length > maxLen ? name.slice(0, maxLen) + '…' : name;
+
+  const content = `
+    <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;">
+      <div style="
+        background:${statusColor}; color:#ffffff; font-size:11px; font-weight:600;
+        padding:2px 8px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.25);
+        white-space:nowrap; max-width:140px; overflow:hidden; text-overflow:ellipsis;
+        margin-bottom:2px; border:1px solid #ffffff;
+      ">${shortName}</div>
+      <div style="
+        background:${typeInfo.bg}; width:32px; height:32px; border-radius:50%;
+        display:flex; align-items:center; justify-content:center;
+        font-size:16px; border:2px solid #ffffff;
+        box-shadow:0 2px 6px rgba(0,0,0,0.35);
+      ">${typeInfo.icon}</div>
+      <div style="
+        width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;
+        border-top:6px solid #ffffff;margin-top:-1px;
+      "></div>
+    </div>
+  `;
+  return { content };
+}
+
+// 在地图标注所有项目
+function renderMarkers(projects) {
+  console.log('renderMarkers 被调用，项目数: ' + projects.length);
+  projects.forEach(p => console.log('  - ' + p.name + ' lng=' + p.lng + ' lat=' + p.lat));
+
+  // 清除旧标注
+  markers.forEach(m => map.remove(m));
+  markers = [];
+
+  // 过滤有坐标的项目
+  const validProjects = projects.filter(p => p.lng && p.lat);
+  console.log('有坐标的项目: ' + validProjects.length);
+
+  validProjects.forEach(p => {
+    const icon = createMarkerIcon(p.type, p.status, p.name);
+    const marker = new AMap.Marker({
+      position: [parseFloat(p.lng), parseFloat(p.lat)],
+      content: icon.content,
+      offset: new AMap.Pixel(-16, -56),
+      zIndex: 100,
+    });
+
+    // 点击标注显示信息窗体
+    marker.on('click', () => showInfoWindow(p, marker));
+
+    map.add(marker);
+    marker.projectId = p.id;
+    markers.push(marker);
+  });
+
+  console.log('已添加 ' + markers.length + ' 个标注');
+
+  // 如果有项目，自动缩放地图显示所有标注
+  if (markers.length > 0) {
+    const sidebarOpen = !document.getElementById('project-sidebar').classList.contains('collapsed');
+    const leftPad = sidebarOpen ? 280 : 80;
+    map.setFitView(markers, false, [80, 80, 80, leftPad]);
+  }
+}
+
+// 显示信息窗体（项目详情卡片）
+function showInfoWindow(project, marker) {
+  const color = getStatusColor(project.status);
+  const amountText = project.amount ? Number(project.amount).toLocaleString() + ' 万元' : '未填';
+  const html = `
+    <div class="info-window">
+      <h3>${project.name}</h3>
+      <p><span class="label">📍 地点：</span>${project.city}</p>
+      <p><span class="label">🏗️ 类型：</span>${project.type}</p>
+      <p><span class="label">📊 状态：</span><span class="tag tag-${project.status}">${project.status}</span></p>
+      <p><span class="label">💰 合同额：</span>${amountText}</p>
+      ${project.scale ? `<p><span class="label">📐 规模：</span>${project.scale}</p>` : ''}
+      ${project.contractor ? `<p><span class="label">🏢 承建方：</span>${project.contractor}</p>` : ''}
+      ${project.overview ? `<p><span class="label">📋 概况：</span>${project.overview}</p>` : ''}
+      ${project.remark ? `<p><span class="label">📝 备注：</span>${project.remark}</p>` : ''}
+      <hr style="margin:10px 0;border:none;border-top:1px solid #e5e7eb"/>
+      <div style="display:flex;gap:8px;">
+        <button onclick="window.editProject('${project.id}')" style="flex:1;background:#3b82f6;color:white;border:none;padding:6px 0;border-radius:6px;font-size:13px;cursor:pointer;">✏️ 编辑</button>
+        <button onclick="window.deleteProjectConfirm('${project.id}')" style="flex:1;background:#ef4444;color:white;border:none;padding:6px 0;border-radius:6px;font-size:13px;cursor:pointer;">🗑️ 删除</button>
+      </div>
+    </div>
+  `;
+
+  if (infoWindow) map.remove(infoWindow);
+  infoWindow = new AMap.InfoWindow({
+    content: html,
+    offset: new AMap.Pixel(0, -56),
+    closeWhenClickMap: true,
+  });
+  infoWindow.open(map, marker.getPosition());
+}
+
+// ========== 区域公司功能 ==========
+// 绘制区域省份色块（加载标准GeoJSON省界数据，按区域公司着色）
+async function drawRegionPolygons(AMapInstance) {
+  // 清除旧多边形
+  regionPolygons.forEach(p => map.remove(p));
+  regionPolygons = [];
+
+  // 建立省份→区域公司映射（支持模糊匹配）
+  const provinceToRegion = {};
+  REGION_COMPANIES.forEach(region => {
+    region.provinces.forEach(prov => {
+      provinceToRegion[prov] = region;
+    });
+  });
+
+  // 省份名模糊匹配：去掉 省/市/自治区/特别行政区/壮族/回族/维吾尔 后缀
+  function normalizeName(name) {
+    return name.replace(/省|市|自治区|特别行政区|壮族|回族|维吾尔/g, '');
+  }
+  const normalizedMap = {};
+  Object.keys(provinceToRegion).forEach(fullName => {
+    normalizedMap[normalizeName(fullName)] = provinceToRegion[fullName];
+  });
+
+  function findRegion(provName) {
+    if (provinceToRegion[provName]) return provinceToRegion[provName];
+    const norm = normalizeName(provName);
+    if (normalizedMap[norm]) return normalizedMap[norm];
+    // 再做 includes 匹配
+    for (const [key, region] of Object.entries(normalizedMap)) {
+      if (norm.includes(key) || key.includes(norm)) return region;
+    }
+    return null;
+  }
+
+  try {
+    console.log('开始加载省份边界GeoJSON...');
+    const response = await fetch('https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json');
+    if (!response.ok) throw new Error('GeoJSON请求失败: ' + response.status);
+    const geoData = await response.json();
+    console.log('✅ GeoJSON加载成功，共 ' + geoData.features.length + ' 个区域');
+
+    let matched = 0;
+    geoData.features.forEach(feature => {
+      const provName = feature.properties.name;
+      const region = findRegion(provName);
+      if (!region) return; // 不属于任何区域公司的省份跳过
+
+      matched++;
+      const coords = feature.geometry.coordinates;
+
+      function drawRing(ring) {
+        const path = ring.map(c => new AMapInstance.LngLat(c[0], c[1]));
+        const polygon = new AMapInstance.Polygon({
+          path: path,
+          fillColor: region.color,
+          fillOpacity: 0.3,
+          strokeColor: region.color,
+          strokeWeight: 1,
+          strokeOpacity: 0.6,
+          zIndex: 50,
+          bubble: true,  // 允许事件穿透到地图（关键！否则多边形覆盖区域无法触发地图 click 事件）
+        });
+        map.add(polygon);
+        regionPolygons.push(polygon);
+      }
+
+      if (feature.geometry.type === 'MultiPolygon') {
+        coords.forEach(polygon => polygon.forEach(ring => drawRing(ring)));
+      } else if (feature.geometry.type === 'Polygon') {
+        coords.forEach(ring => drawRing(ring));
+      }
+    });
+
+    console.log('✅ 区域省份色块绘制完成：匹配 ' + matched + ' 个省份，共 ' + regionPolygons.length + ' 个多边形');
+  } catch(err) {
+    console.error('❌ 加载省份GeoJSON失败:', err);
+  }
+}
+
+// 添加区域公司总部标注
+function addRegionHQMarkers(AMapInstance) {
+  // 清除旧标注
+  regionHQMarkers.forEach(m => map.remove(m));
+  regionHQMarkers = [];
+
+  REGION_COMPANIES.forEach(region => {
+    const content = `
+      <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;">
+        <div style="
+          background:${region.color}; color:#fff; font-size:11px; font-weight:700;
+          padding:3px 10px; border-radius:4px; box-shadow:0 1px 6px rgba(0,0,0,0.3);
+          white-space:nowrap; border:1.5px solid #fff; margin-bottom:2px;
+        ">${region.name}</div>
+        <div style="
+          background:#fff; width:16px; height:16px; border-radius:50%;
+          border:4px solid ${region.color}; box-shadow:0 2px 8px rgba(0,0,0,0.4);
+        "></div>
+        <div style="
+          font-size:10px; color:${region.color}; font-weight:600; margin-top:2px;
+          text-shadow:1px 1px 2px #fff, -1px -1px 2px #fff, 1px -1px 2px #fff, -1px 1px 2px #fff;
+          white-space:nowrap;
+        ">HQ ${region.hq}</div>
+      </div>
+    `;
+    const marker = new AMapInstance.Marker({
+      position: region.hqCoord,
+      content: content,
+      offset: new AMapInstance.Pixel(-30, -45),
+      zIndex: 150,
+    });
+
+    marker.on('click', function() {
+      if (infoWindow) map.remove(infoWindow);
+      infoWindow = new AMapInstance.InfoWindow({
+        content: `<div class="info-window">
+          <h3>${region.name}</h3>
+          <p><span class="label">📍 总部所在地：</span>${region.hq}</p>
+          <p><span class="label">🗺️ 业务范围：</span>${region.provinces.join('、')}</p>
+        </div>`,
+        offset: new AMapInstance.Pixel(0, -50),
+        closeWhenClickMap: true,
+      });
+      infoWindow.open(map, marker.getPosition());
+    });
+
+    map.add(marker);
+    regionHQMarkers.push(marker);
+  });
+
+  console.log('区域公司总部标注添加完成，共 ' + regionHQMarkers.length + ' 个');
+}
+
+// ========== 弹窗逻辑 ==========
+function openModal(mode, project) {
+  const modal = document.getElementById('modal');
+  const title = document.getElementById('modal-title');
+  const delBtn = document.getElementById('btn-delete');
+  modal.classList.remove('hidden');
+  pickingFromMap = false;
+
+  const provSel = document.getElementById('field-province');
+  const citySel = document.getElementById('field-city');
+
+  if (mode === 'add') {
+    title.textContent = '➕ 添加项目';
+    document.getElementById('field-id').value = '';
+    document.getElementById('field-name').value = '';
+    provSel.value = '';
+    citySel.innerHTML = '<option value="">— 市/县 —</option>';
+    citySel.disabled = true;
+    document.getElementById('field-type').value = '市政工程';
+    document.getElementById('field-status').value = '未开工';
+    document.getElementById('field-amount').value = '';
+    document.getElementById('field-scale').value = '';
+    document.getElementById('field-contractor').value = '';
+    document.getElementById('field-overview').value = '';
+    document.getElementById('field-remark').value = '';
+    pickedLng = null;
+    pickedLat = null;
+    document.getElementById('coord-display').textContent = '';
+    delBtn.classList.add('hidden');
+  } else {
+    title.textContent = '✏️ 编辑项目';
+    document.getElementById('field-id').value = project.id || '';
+    document.getElementById('field-name').value = project.name || '';
+
+    // 根据 city 反查省份
+    let foundProv = '';
+    let foundCity = '';
+    if (project.city) {
+      for (const prov of Object.keys(PROVINCE_CITY_DATA)) {
+        const cities = PROVINCE_CITY_DATA[prov];
+        if (cities[project.city]) {
+          foundProv = prov;
+          foundCity = project.city;
+          break;
+        }
+      }
+    }
+    provSel.value = foundProv;
+    if (foundProv) {
+      // 填充对应城市列表
+      citySel.innerHTML = '<option value="">— 市/县 —</option>';
+      citySel.disabled = false;
+      for (const c of Object.keys(PROVINCE_CITY_DATA[foundProv])) {
+        citySel.innerHTML += `<option value="${c}">${c}</option>`;
+      }
+      citySel.value = foundCity;
+    } else {
+      // 城市不在预设列表，显示原值
+      citySel.innerHTML = '<option value="">— 市/县 —</option>';
+      citySel.disabled = true;
+    }
+
+    document.getElementById('field-type').value = project.type || '市政工程';
+    document.getElementById('field-status').value = project.status || '未开工';
+    document.getElementById('field-amount').value = project.amount || '';
+    document.getElementById('field-scale').value = project.scale || '';
+    document.getElementById('field-contractor').value = project.contractor || '';
+    document.getElementById('field-overview').value = project.overview || '';
+    document.getElementById('field-remark').value = project.remark || '';
+    pickedLng = project.lng || null;
+    pickedLat = project.lat || null;
+    updateCoordDisplay();
+    delBtn.classList.remove('hidden');
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.add('hidden');
+  pickingFromMap = false;
+  if (tempMarker) { map.remove(tempMarker); tempMarker = null; }
+  if (infoWindow) { map.remove(infoWindow); infoWindow = null; }
+}
+
+// 更新坐标显示
+function updateCoordDisplay() {
+  const el = document.getElementById('coord-display');
+  if (pickedLng && pickedLat) {
+    el.textContent = '📍 坐标：' + pickedLng.toFixed(4) + ', ' + pickedLat.toFixed(4);
+    el.style.color = '#10b981';
+  } else {
+    el.textContent = '';
+  }
+}
+
+// 临时标注（地图选点用）
+let tempMarker = null;
+
+// 初始化省份下拉
+function initProvinceSelect() {
+  const sel = document.getElementById('field-province');
+  sel.innerHTML = '<option value="">— 省/区 —</option>';
+  for (const prov of Object.keys(PROVINCE_CITY_DATA)) {
+    sel.innerHTML += `<option value="${prov}">${prov}</option>`;
+  }
+}
+
+// 省份联动 —— 选择省后填充对应市县
+document.getElementById('field-province').addEventListener('change', function() {
+  const prov = this.value;
+  const citySel = document.getElementById('field-city');
+  citySel.innerHTML = '<option value="">— 市/县 —</option>';
+  if (prov && PROVINCE_CITY_DATA[prov]) {
+    citySel.disabled = false;
+    for (const city of Object.keys(PROVINCE_CITY_DATA[prov])) {
+      citySel.innerHTML += `<option value="${city}">${city}</option>`;
+    }
+  } else {
+    citySel.disabled = true;
+  }
+  citySel.value = '';
+  pickedLng = null;
+  pickedLat = null;
+  updateCoordDisplay();
+});
+
+// 城市联动 —— 选择市县自动设置坐标
+document.getElementById('field-city').addEventListener('change', function() {
+  const city = this.value;
+  const prov = document.getElementById('field-province').value;
+  if (city && prov && PROVINCE_CITY_DATA[prov] && PROVINCE_CITY_DATA[prov][city]) {
+    const coord = PROVINCE_CITY_DATA[prov][city];
+    pickedLng = coord[0];
+    pickedLat = coord[1];
+    updateCoordDisplay();
+    if (map) {
+      map.setCenter([pickedLng, pickedLat]);
+      map.setZoom(8);
+    }
+  } else {
+    pickedLng = null;
+    pickedLat = null;
+    updateCoordDisplay();
+  }
+});
+
+// 地图选点按钮
+document.getElementById('btn-pick-map').addEventListener('click', function() {
+  startMapPicking();
+});
+
+// 开始地图选点（单击选点方案：无遮罩层，直接监听高德地图 click 事件）
+function startMapPicking() {
+  // 隐藏弹窗，露出地图
+  document.getElementById('modal').classList.add('hidden');
+  pickingFromMap = true;
+
+  showToast('请在地图上【单击】选取项目位置（可自由拖动/缩放）');
+
+  // 添加点击提示条
+  let tipBar = document.getElementById('map-pick-tip');
+  if (!tipBar) {
+    tipBar = document.createElement('div');
+    tipBar.id = 'map-pick-tip';
+    tipBar.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#3b82f6;color:white;padding:10px 24px;border-radius:8px;font-size:14px;z-index:500;box-shadow:0 2px 12px rgba(0,0,0,0.2);cursor:pointer;';
+    tipBar.innerHTML = '📍 单击地图选取项目位置 &nbsp; <span style="color:#bfdbfe;text-decoration:underline;cursor:pointer;" onclick="cancelMapPicking()">取消</span>';
+    document.body.appendChild(tipBar);
+  }
+  tipBar.style.display = 'block';
+
+  // 绑定单击选点事件（高德地图 click 事件）
+  if (map._pickClickHandler) map.off('click', map._pickClickHandler);
+  map._pickClickHandler = function(e) {
+    if (!pickingFromMap) return;
+    console.log('✅ 地图 click 选点触发');
+
+    const lng = e.lnglat.getLng();
+    const lat = e.lnglat.getLat();
+    pickedLng = lng;
+    pickedLat = lat;
+    console.log('✅ 选点坐标：' + lng.toFixed(4) + ', ' + lat.toFixed(4));
+
+    finishMapPicking(lng, lat);
+  };
+  map.on('click', map._pickClickHandler);
+
+  // 设置地图容器光标为十字
+  document.getElementById('map-container').style.cursor = 'crosshair';
+
+  // ESC 键取消选点
+  map._pickKeyHandler = function(e) {
+    if (e.key === 'Escape') cancelMapPicking();
+  };
+  document.addEventListener('keydown', map._pickKeyHandler);
+
+  console.log('✅ 地图选点模式已启动（单击选点方案）');
+}
+
+// 选点完成 —— 放置临时标注，关闭选点模式，重新打开弹窗
+function finishMapPicking(lng, lat) {
+  pickingFromMap = false;
+
+  // 清除提示条
+  const tipBar = document.getElementById('map-pick-tip');
+  if (tipBar) tipBar.style.display = 'none';
+
+  // 移除 click 和 ESC 监听
+  if (map._pickClickHandler) {
+    map.off('click', map._pickClickHandler);
+    map._pickClickHandler = null;
+  }
+  if (map._pickKeyHandler) {
+    document.removeEventListener('keydown', map._pickKeyHandler);
+    map._pickKeyHandler = null;
+  }
+
+  // 恢复地图容器光标
+  document.getElementById('map-container').style.cursor = '';
+
+  // 在地图上放置临时标注
+  if (tempMarker) { map.remove(tempMarker); tempMarker = null; }
+  tempMarker = new window.AMap.Marker({
+    position: [lng, lat],
+    content: '<div style="background:#10b981;color:white;width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.3);border:2px solid white;">📍</div>',
+    offset: new window.AMap.Pixel(-14, -28),
+    zIndex: 200,
+  });
+  map.add(tempMarker);
+  map.setCenter([lng, lat]);
+
+  // 重新打开弹窗
+  document.getElementById('modal').classList.remove('hidden');
+  updateCoordDisplay();
+  showToast('✅ 已选取位置：' + lng.toFixed(4) + ', ' + lat.toFixed(4));
+}
+
+// 取消地图选点
+function cancelMapPicking() {
+  pickingFromMap = false;
+
+  // 清除提示条
+  const tipBar = document.getElementById('map-pick-tip');
+  if (tipBar) tipBar.style.display = 'none';
+
+  // 移除 click 和 ESC 监听
+  if (map._pickClickHandler) {
+    map.off('click', map._pickClickHandler);
+    map._pickClickHandler = null;
+  }
+  if (map._pickKeyHandler) {
+    document.removeEventListener('keydown', map._pickKeyHandler);
+    map._pickKeyHandler = null;
+  }
+
+  // 恢复地图容器光标
+  document.getElementById('map-container').style.cursor = '';
+
+  if (tempMarker) { map.remove(tempMarker); tempMarker = null; }
+  // 重新打开弹窗
+  document.getElementById('modal').classList.remove('hidden');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), 2000);
+}
+
+// 图例折叠/展开
+function toggleLegend() {
+  document.getElementById('map-legend').classList.toggle('collapsed');
+}
+
+// ========== 侧边栏项目列表 ==========
+// 综合筛选：搜索关键词 + 类型 + 状态
+function getFilteredProjects() {
+  const kw = (document.getElementById('search-input').value || '').trim().toLowerCase();
+  const filterType = document.getElementById('filter-type').value;
+  const filterStatus = document.getElementById('filter-status').value;
+  let result = currentProjects;
+  if (kw) {
+    result = result.filter(p =>
+      (p.name && p.name.toLowerCase().includes(kw)) ||
+      (p.city && p.city.toLowerCase().includes(kw)) ||
+      (p.type && p.type.toLowerCase().includes(kw))
+    );
+  }
+  if (filterType) result = result.filter(p => p.type === filterType);
+  if (filterStatus) result = result.filter(p => p.status === filterStatus);
+  return result;
+}
+
+// 筛选下拉变化时触发
+function applySidebarFilters() {
+  const filtered = getFilteredProjects();
+  renderMarkers(filtered);
+  renderProjectList(filtered);
+}
+
+// 侧边栏折叠
+function toggleSidebar() {
+  const sidebar = document.getElementById('project-sidebar');
+  const showBtn = document.getElementById('sidebar-show-btn');
+  sidebar.classList.toggle('collapsed');
+  const collapsed = sidebar.classList.contains('collapsed');
+  showBtn.style.display = collapsed ? 'flex' : 'none';
+  document.body.classList.toggle('sb-collapsed', collapsed);
+}
+
+// 渲染项目列表
+function renderProjectList(projects) {
+  const listEl = document.getElementById('sidebar-list');
+  const countEl = document.getElementById('sidebar-count');
+  countEl.textContent = '(' + projects.length + ')';
+
+  if (projects.length === 0) {
+    listEl.innerHTML = '<div class="sidebar-empty">暂无项目，点击 + 添加</div>';
+    return;
+  }
+
+  listEl.innerHTML = projects.map(p => {
+    const typeInfo = getTypeIcon(p.type);
+    const statusColor = getStatusColor(p.status);
+    const amountText = p.amount ? Number(p.amount).toLocaleString() + ' 万' : '';
+    return `
+      <div class="sidebar-item" data-id="${p.id}" onclick="focusProject('${p.id}')">
+        <div class="sidebar-item-row1">
+          <span class="sidebar-item-icon" style="background:${typeInfo.bg}">${typeInfo.icon}</span>
+          <span class="sidebar-item-name" title="${p.name}">${p.name}</span>
+          <span class="sidebar-item-status" style="background:${statusColor}22;color:${statusColor}">${p.status}</span>
+        </div>
+        <div class="sidebar-item-row2">
+          <span>📍${p.city || ''}</span>
+          ${amountText ? `<span>💰${amountText}</span>` : ''}
+        </div>
+        <div class="sidebar-item-actions">
+          <button class="sidebar-action-btn edit" onclick="event.stopPropagation();sidebarEdit('${p.id}')">编辑</button>
+          <button class="sidebar-action-btn delete" onclick="event.stopPropagation();sidebarDelete('${p.id}')">删除</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// 点击列表项 → 聚焦地图
+function focusProject(id) {
+  const p = currentProjects.find(x => x.id === id);
+  if (!p || !p.lng || !p.lat) return;
+  document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+  const itemEl = document.querySelector('.sidebar-item[data-id="' + id + '"]');
+  if (itemEl) itemEl.classList.add('active');
+  map.setCenter([parseFloat(p.lng), parseFloat(p.lat)]);
+  map.setZoom(10);
+  const marker = markers.find(m => m.projectId === id);
+  if (marker) showInfoWindow(p, marker);
+}
+
+// 列表内编辑
+function sidebarEdit(id) {
+  const p = currentProjects.find(x => x.id === id);
+  if (p) { closeModal(); setTimeout(() => openModal('edit', p), 100); }
+}
+
+// 列表内删除
+function sidebarDelete(id) {
+  if (!confirm('确定删除该项目？')) return;
+  deleteProject(id).then(() => {
+    refreshMap();
+    showToast('项目已删除');
+    if (infoWindow) { map.remove(infoWindow); infoWindow = null; }
+  });
+}
+
+// 全局方法（供信息窗体中的按钮调用）
+window.editProject = function(id) {
+  const p = currentProjects.find(x => x.id === id);
+  if (p) { closeModal(); setTimeout(() => openModal('edit', p), 100); }
+};
+window.deleteProjectConfirm = function(id) {
+  if (!confirm('确定删除该项目？')) return;
+  deleteProject(id).then(() => {
+    refreshMap();
+    showToast('项目已删除');
+    if (infoWindow) { map.remove(infoWindow); infoWindow = null; }
+  });
+};
+
+// ========== 事件绑定 ==========
+document.getElementById('btn-add').addEventListener('click', () => openModal('add'));
+document.getElementById('btn-close').addEventListener('click', closeModal);
+document.getElementById('btn-cancel').addEventListener('click', closeModal);
+document.getElementById('btn-delete').addEventListener('click', function() {
+  const id = document.getElementById('field-id').value;
+  if (!id || !confirm('确定删除该项目？')) return;
+  deleteProject(id).then(() => { closeModal(); refreshMap(); showToast('项目已删除'); });
+});
+
+// 表单提交
+document.getElementById('project-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const id = document.getElementById('field-id').value;
+  const city = document.getElementById('field-city').value;
+  const data = {
+    name: document.getElementById('field-name').value.trim(),
+    city: city,
+    type: document.getElementById('field-type').value,
+    status: document.getElementById('field-status').value,
+    amount: document.getElementById('field-amount').value || '',
+    scale: document.getElementById('field-scale').value.trim(),
+    contractor: document.getElementById('field-contractor').value.trim(),
+    overview: document.getElementById('field-overview').value.trim(),
+    remark: document.getElementById('field-remark').value.trim(),
+  };
+  if (!data.name) { showToast('请填写项目名称'); return; }
+
+  // 使用已有的坐标（城市下拉或地图选点）
+  if (pickedLng && pickedLat) {
+    data.lng = pickedLng;
+    data.lat = pickedLat;
+    // 如果城市为空（地图选点），设为自定义位置
+    if (!city) { data.city = '自定义位置'; }
+  } else {
+    showToast('请选择省市或在地图上选取位置');
+    return;
+  }
+
+  // 显示 loading
+  showToast('正在保存...');
+
+  try {
+    if (id) {
+      await updateProject(id, data);
+      showToast('✅ 项目已更新');
+    } else {
+      await addProject(data);
+      showToast('✅ 项目已添加');
+    }
+    closeModal();
+    refreshMap();
+  } catch(err) {
+    console.error(err);
+    showToast('❌ 保存失败，请重试');
+  }
+});
+
+// 搜索过滤
+document.getElementById('search-input').addEventListener('input', function() {
+  applySidebarFilters();
+});
+
+// 点击弹窗外部关闭
+document.getElementById('modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+// ========== 刷新地图 ==========
+async function refreshMap() {
+  const projects = await loadProjects();
+  currentProjects = projects;
+  const filtered = getFilteredProjects();
+  renderMarkers(filtered);
+  renderProjectList(filtered);
+  // 更新项目数量显示
+  const bar = document.querySelector('.top-bar h1');
+  bar.innerHTML = `<img src="logo.png" style="width:20px;height:20px;border-radius:3px;vertical-align:middle;margin-right:4px;" alt="logo"/>中电建路桥总包公司工程项目地图 <span style="font-size:12px;color:#9ca3af;font-weight:normal">（${projects.length} 个项目）</span>`;
+}
+
+// ========== 初始化地图（异步加载）==========
+async function initMap() {
+  try {
+    console.log('开始加载高德地图... Key:', AMAP_KEY.substring(0, 8) + '...');
+
+    // 使用 AMapLoader 异步加载
+    const AMapInstance = await window.AMapLoader.load({
+      key: AMAP_KEY,
+      version: '2.0',
+      plugins: ['AMap.DistrictSearch'],
+    });
+
+    console.log('✅ 高德地图 JS API 加载成功');
+
+    // 将加载后的 AMap 实例挂载到全局
+    window.AMap = AMapInstance;
+
+    // 创建地图实例
+    map = new AMapInstance.Map('map-container', {
+      zoom: 5,
+      center: [105, 36],
+      viewMode: '2D',
+      resizeEnable: true,
+    });
+
+    console.log('✅ 地图实例创建成功');
+
+    // 地图加载完成后导入初始数据并渲染项目
+    map.on('complete', async () => {
+      console.log('✅ 地图渲染完成');
+      // 绘制区域省份色块和总部标注
+      drawRegionPolygons(AMapInstance);
+      addRegionHQMarkers(AMapInstance);
+      await seedProjects();
+      refreshMap();
+    });
+  } catch(err) {
+    console.error('高德地图加载失败:', err);
+    document.getElementById('map-container').innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;padding:40px;text-align:center;color:#6b7280;">
+        <div>
+          <h2 style="color:#ef4444;margin-bottom:16px;">❌ 高德地图加载失败</h2>
+          <p style="margin-bottom:12px;">错误信息：${err.message}</p>
+          <p style="font-size:13px;color:#9ca3af;">请检查网络连接或 Key 是否正确配置</p>
+        </div>
+      </div>
+    `;
+  }
+}
+
+// ========== 时钟功能 ==========
+function updateClock() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+  const weekDay = weekDays[now.getDay()];
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  document.getElementById('clock-date').textContent = year + '年' + month + '月' + day + '日 星期' + weekDay;
+  document.getElementById('clock-time').textContent = hours + ':' + minutes + ':' + seconds;
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ========== 启动 ==========
+// 确保初始展开状态
+document.getElementById('project-sidebar').classList.remove('collapsed');
+document.getElementById('sidebar-show-btn').style.display = 'none';
+document.body.classList.remove('sb-collapsed');
+document.getElementById('map-legend').classList.remove('collapsed');
+initProvinceSelect();
+initMap();
+</script>
+</body>
+</html>
