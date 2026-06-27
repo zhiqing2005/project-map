@@ -48,22 +48,54 @@
     @media (max-width: 860px) {
       .slogan { font-size: 15px; letter-spacing: 1px; padding: 2px 8px; }
     }
+
+    /* ========== 手机端专属样式（<=768px） ========== */
     @media (max-width: 768px) {
-      .top-bar { grid-template-columns: auto; justify-content: space-between; padding: 8px 12px; gap: 4px; }
-      .top-bar-left h1 { font-size: 13px !important; }
+      /* 标题栏：紧凑布局，只保留标题和添加按钮 */
+      .top-bar {
+        grid-template-columns: 1fr auto;
+        padding: 6px 10px;
+        gap: 8px;
+      }
+      .top-bar-center { display: none; }           /* 隐藏标语 */
+      #clock-display { display: none !important; } /* 隐藏时钟 */
+      .top-bar-left h1 { font-size: 13px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .top-bar-left img { width: 20px !important; height: 20px !important; }
-      .top-bar-center { order: -1; width: 100%; padding: 2px 0; }
-      .top-bar-right { gap: 4px; }
-      #clock-display { font-size: 10px !important; }
-      #clock-display #clock-time { font-size: 13px !important; }
-      #btn-add { font-size: 12px !important; padding: 4px 8px !important; }
+      #btn-add { font-size: 12px !important; padding: 4px 10px !important; }
+
+      /* 地图容器：最小化顶部/底部留白 */
+      #map-container { padding-top: 42px !important; padding-bottom: 0 !important; }
+
+      /* 隐藏底部友情链接栏 */
+      .footer-links { display: none !important; }
+
+      /* 左侧项目列表：默认收起 */
+      .project-sidebar {
+        transform: translateX(-100%) !important;
+        width: 220px;
+      }
+      body:not(.sb-collapsed) .project-sidebar { transform: translateX(0) !important; }
+      .sidebar-show-btn { display: flex !important; top: 46px; min-height: 80px; width: 24px; }
+      body:not(.sb-collapsed) .sidebar-show-btn { display: none !important; }
+      body:not(.sb-collapsed) .search-box { left: 228px !important; transform: none !important; width: calc(100% - 244px) !important; }
+      body.sb-collapsed .search-box { left: 36px !important; transform: none !important; width: calc(100% - 52px) !important; }
+
+      /* 右侧图例：默认收起 */
+      .map-legend { bottom: 10px !important; right: 8px !important; max-width: 170px; max-height: 50vh; }
+      .map-legend.collapsed { max-height: 36px; }
+
+      /* 搜索框和提示位置 */
+      .search-box { top: 48px !important; width: calc(100% - 16px) !important; left: 8px !important; transform: none !important; max-width: none !important; }
+      #toast { top: 52px !important; font-size: 12px !important; padding: 8px 14px !important; }
     }
+
     @media (max-width: 480px) {
-      .top-bar { padding: 6px 8px; }
-      .top-bar-left h1 { font-size: 11px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
-      .slogan { font-size: 12px; letter-spacing: 1px; }
-      .clock-display { display: none; }
-      #btn-add { font-size: 11px !important; padding: 4px 6px !important; }
+      .top-bar { padding: 4px 8px; gap: 4px; }
+      .top-bar-left h1 { font-size: 11px !important; max-width: 140px; }
+      #btn-add { font-size: 11px !important; padding: 3px 6px !important; }
+      #map-container { padding-top: 38px !important; }
+      .sidebar-show-btn { top: 40px; }
+      .search-box { top: 44px !important; }
     }
 
     /* 地图容器 */
@@ -1666,11 +1698,20 @@ updateClock();
 setInterval(updateClock, 1000);
 
 // ========== 启动 ==========
-// 确保初始展开状态
-document.getElementById('project-sidebar').classList.remove('collapsed');
-document.getElementById('sidebar-show-btn').style.display = 'none';
-document.body.classList.remove('sb-collapsed');
-document.getElementById('map-legend').classList.remove('collapsed');
+var isMobile = window.innerWidth <= 768;
+if (isMobile) {
+  // 手机端：侧边栏和图例默认收起
+  document.getElementById('project-sidebar').classList.add('collapsed');
+  document.getElementById('sidebar-show-btn').style.display = 'flex';
+  document.body.classList.add('sb-collapsed');
+  document.getElementById('map-legend').classList.add('collapsed');
+} else {
+  // 桌面端：保持展开状态
+  document.getElementById('project-sidebar').classList.remove('collapsed');
+  document.getElementById('sidebar-show-btn').style.display = 'none';
+  document.body.classList.remove('sb-collapsed');
+  document.getElementById('map-legend').classList.remove('collapsed');
+}
 initProvinceSelect();
 initMap();
 </script>
