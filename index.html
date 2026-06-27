@@ -59,9 +59,9 @@
       }
       .top-bar-center { display: none; }           /* 隐藏标语 */
       #clock-display { display: none !important; } /* 隐藏时钟 */
-      .top-bar-left h1 { font-size: 13px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .top-bar-left h1 { font-size: 13px !important; white-space: normal !important; overflow: visible !important; text-overflow: unset !important; line-height: 1.2; }
       .top-bar-left img { width: 20px !important; height: 20px !important; }
-      #btn-add { font-size: 12px !important; padding: 4px 10px !important; }
+      #btn-add { font-size: 12px !important; padding: 4px 10px !important; white-space: nowrap; }
 
       /* 地图容器：最小化顶部/底部留白 */
       #map-container { padding-top: 42px !important; padding-bottom: 0 !important; }
@@ -87,6 +87,11 @@
       /* 搜索框和提示位置 */
       .search-box { top: 48px !important; width: calc(100% - 16px) !important; left: 8px !important; transform: none !important; max-width: none !important; }
       #toast { top: 52px !important; font-size: 12px !important; padding: 8px 14px !important; }
+
+      /* 添加项目弹窗：省/市/地图选点纵向排列 */
+      #project-form .flex.gap-2 { flex-direction: column !important; }
+      #project-form .flex.gap-2 #btn-pick-map { width: 100%; }
+      #project-form .flex.gap-2 select { width: 100%; }
     }
 
     @media (max-width: 480px) {
@@ -283,7 +288,7 @@
 <!-- 顶部栏 -->
 <div class="top-bar">
   <div class="top-bar-left">
-    <h1 class="font-bold text-gray-800" style="display:flex;align-items:center;gap:6px;margin:0;"><img src="logo.png" style="width:24px;height:24px;border-radius:3px;" alt="logo" /> 中电建路桥总包公司工程项目地图</h1>
+    <h1 class="font-bold text-gray-800" style="display:flex;align-items:center;gap:6px;margin:0;flex-wrap:wrap;"><img src="logo.png" style="width:24px;height:24px;border-radius:3px;" alt="logo" /> 中电建路桥总包公司工程项目地图</h1>
   </div>
   <div class="top-bar-center">
     <div class="slogan">
