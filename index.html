@@ -737,27 +737,46 @@ function saveLocal(projects) {
   localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
 }
 
+// 清洗数据：空字符串转 null，适配 Supabase 字段类型
+function cleanData(data) {
+  const d = { ...data };
+  // numeric 字段：空字符串 → null
+  d.amount = (d.amount === '' || d.amount === undefined || d.amount === null) ? null : Number(d.amount);
+  // 坐标字段
+  d.lng = d.lng ? Number(d.lng) : null;
+  d.lat = d.lat ? Number(d.lat) : null;
+  // 字符串字段：undefined → 空字符串
+  ['name','city','type','status','scale','contractor','overview','remark'].forEach(k => {
+    if (d[k] === undefined || d[k] === null) d[k] = '';
+  });
+  return d;
+}
+
 // 添加项目到云端
 async function addProject(data) {
+  const d = cleanData(data);
   try {
     const resp = await fetch(SUPABASE_URL + '/rest/v1/projects', {
       method: 'POST',
       headers: supabaseHeaders(),
       body: JSON.stringify([{
-        name: data.name,
-        city: data.city,
-        lng: data.lng,
-        lat: data.lat,
-        type: data.type,
-        status: data.status,
-        amount: data.amount,
-        scale: data.scale,
-        contractor: data.contractor,
-        overview: data.overview,
-        remark: data.remark,
+        name: d.name,
+        city: d.city,
+        lng: d.lng,
+        lat: d.lat,
+        type: d.type,
+        status: d.status,
+        amount: d.amount,
+        scale: d.scale,
+        contractor: d.contractor,
+        overview: d.overview || null,
+        remark: d.remark,
       }]),
     });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error('HTTP ' + resp.status + ' ' + errText);
+    }
     const result = await resp.json();
     return result[0];
   } catch(e) {
@@ -773,26 +792,30 @@ async function addProject(data) {
 
 // 更新云端项目
 async function updateProject(id, data) {
+  const d = cleanData(data);
   try {
     const resp = await fetch(SUPABASE_URL + '/rest/v1/projects?id=eq.' + id, {
       method: 'PATCH',
       headers: supabaseHeaders(),
       body: JSON.stringify({
-        name: data.name,
-        city: data.city,
-        lng: data.lng,
-        lat: data.lat,
-        type: data.type,
-        status: data.status,
-        amount: data.amount,
-        scale: data.scale,
-        contractor: data.contractor,
-        overview: data.overview,
-        remark: data.remark,
+        name: d.name,
+        city: d.city,
+        lng: d.lng,
+        lat: d.lat,
+        type: d.type,
+        status: d.status,
+        amount: d.amount,
+        scale: d.scale,
+        contractor: d.contractor,
+        overview: d.overview || null,
+        remark: d.remark,
       }),
     });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    return { ...data, id };
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error('HTTP ' + resp.status + ' ' + errText);
+    }
+    return { ...d, id };
   } catch(e) {
     console.warn('⚠️ Supabase 更新失败，降级到本地:', e.message);
   }
@@ -1611,7 +1634,7 @@ document.getElementById('project-form').addEventListener('submit', async functio
     city: city,
     type: document.getElementById('field-type').value,
     status: document.getElementById('field-status').value,
-    amount: document.getElementById('field-amount').value || '',
+    amount: document.getElementById('field-amount').value ? Number(document.getElementById('field-amount').value) : '',
     scale: document.getElementById('field-scale').value.trim(),
     contractor: document.getElementById('field-contractor').value.trim(),
     overview: document.getElementById('field-overview').value.trim(),
