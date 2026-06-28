@@ -6,8 +6,7 @@
   <title>工程项目地图</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- 高德地图 Loader（异步加载）+ Supabase SDK（UMD 浏览器版）-->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <!-- 高德地图 Loader（异步加载）-->
   <!-- 高德地图异步加载器 -->
   <script src="https://unpkg.com/@amap/amap-jsapi-loader@1.0.1/dist/index.js"></script>
   <style>
@@ -504,22 +503,9 @@ const AMAP_KEY = 'be6a46c78f97d20c77b9cbc3270dc051';
 // const LC_APP_KEY = 'your-app-key-here';
 // const LC_SERVER_URL = 'https://your-server-url.leancloud.cn';
 
-// ========== Supabase 配置 ==========
+// ========== Supabase REST API 配置（无需 SDK，纯 fetch 调用）==========
 const SUPABASE_URL = 'https://qikqmdajlmumcvwdtuiq.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpa3FtZGFqbG11bWN2d2R0dWlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3NjEwOTAsImV4cCI6MjA5NzMzNzA5MH0.94dixqNHriXlvI9GER45YDwV0VqE7mRakqWXts-QZxM';
-
-// 初始化 Supabase 客户端（带容错）
-let supabase = null;
-try {
-  if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    console.log('✅ Supabase 已初始化');
-  } else {
-    console.warn('⚠️ Supabase SDK 未加载，将使用本地存储模式');
-  }
-} catch(e) {
-  console.warn('⚠️ Supabase 初始化失败:', e.message, '将使用本地存储模式');
-}
 
 // ========== 省市两级数据（含坐标）==========
 const PROVINCE_CITY_DATA = {
@@ -705,79 +691,79 @@ let pickedLng = null;
 let pickedLat = null;
 let pickingFromMap = false; // 是否正在地图选点模式
 
-// ========== 数据操作层（Supabase 云端同步）==========
+// ========== 数据操作层（Supabase REST API 云端同步）==========
 // 电脑端和手机端共享同一份数据，任何设备操作后实时同步
+// 使用纯 fetch 调用 Supabase REST API，无需任何 SDK CDN
 
 // 本地降级缓存 key（Supabase 不可用时使用）
 const PROJECTS_KEY = 'project_map_data';
 
-async function loadProjects() {
-  // 优先使用 Supabase 云端数据
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', { ascending: true });
-      
-      if (error) {
-        console.error('❌ Supabase 读取失败:', error.message);
-      } else if (data && data.length > 0) {
-        console.log('✅ 从云端加载了 ' + data.length + ' 个项目');
-        return data;
-      }
-    } catch(e) {
-      console.error('❌ Supabase 请求异常:', e.message);
-    }
-  }
-  
-  // 降级到本地存储
-  const localData = loadLocal();
-  if (supabase && localData.length > 0) {
-    console.log('⚠️ 使用本地缓存数据（' + localData.length + ' 个项目）');
-  }
-  return localData;
+// Supabase REST API 请求头
+function supabaseHeaders() {
+  return {
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation',
+  };
 }
 
+// 从云端加载项目
+async function loadProjects() {
+  try {
+    const resp = await fetch(SUPABASE_URL + '/rest/v1/projects?order=created_at.asc', {
+      headers: supabaseHeaders(),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    if (data && data.length > 0) {
+      console.log('✅ 从云端加载了 ' + data.length + ' 个项目');
+      return data;
+    }
+  } catch(e) {
+    console.warn('⚠️ Supabase 读取失败，降级到本地:', e.message);
+  }
+  return loadLocal();
+}
+
+// 从本地存储加载
 function loadLocal() {
   try { return JSON.parse(localStorage.getItem(PROJECTS_KEY) || '[]'); }
   catch { return []; }
 }
 
+// 保存到本地存储（降级用）
 function saveLocal(projects) {
   localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
 }
 
+// 添加项目到云端
 async function addProject(data) {
-  // 优先写入 Supabase 云端
-  if (supabase) {
-    try {
-      const { data: result, error } = await supabase
-        .from('projects')
-        .insert([{
-          name: data.name,
-          city: data.city,
-          lng: data.lng,
-          lat: data.lat,
-          type: data.type,
-          status: data.status,
-          amount: data.amount,
-          scale: data.scale,
-          contractor: data.contractor,
-          overview: data.overview,
-          remark: data.remark,
-        }])
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return result;
-    } catch(e) {
-      console.warn('⚠️ Supabase 写入失败，降级到本地:', e.message);
-    }
+  try {
+    const resp = await fetch(SUPABASE_URL + '/rest/v1/projects', {
+      method: 'POST',
+      headers: supabaseHeaders(),
+      body: JSON.stringify([{
+        name: data.name,
+        city: data.city,
+        lng: data.lng,
+        lat: data.lat,
+        type: data.type,
+        status: data.status,
+        amount: data.amount,
+        scale: data.scale,
+        contractor: data.contractor,
+        overview: data.overview,
+        remark: data.remark,
+      }]),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const result = await resp.json();
+    return result[0];
+  } catch(e) {
+    console.warn('⚠️ Supabase 写入失败，降级到本地:', e.message);
   }
-  
-  // 降级：保存到本地存储
+  // 降级：保存到本地
   const projects = loadLocal();
   const item = { ...data, id: 'local_' + Date.now() };
   projects.push(item);
@@ -785,34 +771,32 @@ async function addProject(data) {
   return item;
 }
 
+// 更新云端项目
 async function updateProject(id, data) {
-  if (supabase) {
-    try {
-      const { error } = await supabase
-        .from('projects')
-        .update({
-          name: data.name,
-          city: data.city,
-          lng: data.lng,
-          lat: data.lat,
-          type: data.type,
-          status: data.status,
-          amount: data.amount,
-          scale: data.scale,
-          contractor: data.contractor,
-          overview: data.overview,
-          remark: data.remark,
-        })
-        .eq('id', id);
-      
-      if (error) throw error;
-      return { ...data, id };
-    } catch(e) {
-      console.warn('⚠️ Supabase 更新失败，降级到本地:', e.message);
-    }
+  try {
+    const resp = await fetch(SUPABASE_URL + '/rest/v1/projects?id=eq.' + id, {
+      method: 'PATCH',
+      headers: supabaseHeaders(),
+      body: JSON.stringify({
+        name: data.name,
+        city: data.city,
+        lng: data.lng,
+        lat: data.lat,
+        type: data.type,
+        status: data.status,
+        amount: data.amount,
+        scale: data.scale,
+        contractor: data.contractor,
+        overview: data.overview,
+        remark: data.remark,
+      }),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return { ...data, id };
+  } catch(e) {
+    console.warn('⚠️ Supabase 更新失败，降级到本地:', e.message);
   }
-  
-  // 降级：更新本地存储
+  // 降级：更新本地
   const projects = loadLocal();
   const idx = projects.findIndex(p => p.id === id);
   if (idx >= 0) { projects[idx] = { ...projects[idx], ...data }; }
@@ -820,21 +804,18 @@ async function updateProject(id, data) {
   return { ...data, id };
 }
 
+// 从云端删除项目
 async function deleteProject(id) {
-  if (supabase) {
-    try {
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', id);
-      
-      if (error) throw error;
-      return id;
-    } catch(e) {
-      console.warn('⚠️ Supabase 删除失败，降级到本地:', e.message);
-    }
+  try {
+    const resp = await fetch(SUPABASE_URL + '/rest/v1/projects?id=eq.' + id, {
+      method: 'DELETE',
+      headers: supabaseHeaders(),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return id;
+  } catch(e) {
+    console.warn('⚠️ Supabase 删除失败，降级到本地:', e.message);
   }
-  
   // 降级：从本地删除
   const projects = loadLocal().filter(p => p.id !== id);
   saveLocal(projects);
