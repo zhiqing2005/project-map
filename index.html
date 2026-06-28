@@ -89,8 +89,8 @@
       body:not(.sb-collapsed) .search-box { left: 228px !important; transform: none !important; width: calc(100% - 244px) !important; }
       body.sb-collapsed .search-box { left: 36px !important; transform: none !important; width: calc(100% - 52px) !important; }
 
-      /* 右侧图例：默认收起 */
-      .map-legend { bottom: 10px !important; right: 8px !important; max-width: 170px; max-height: 50vh; }
+      /* 右侧图例：默认收起，bottom 需大于底部栏高度(约40px)避免被遮挡 */
+      .map-legend { bottom: 52px !important; right: 8px !important; max-width: 170px; max-height: 50vh; }
       .map-legend.collapsed { max-height: 36px; }
 
       /* 搜索框和提示位置 */
@@ -194,7 +194,7 @@
     .legend-region-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); flex-shrink: 0; }
     .legend-region-bar { width: 16px; height: 10px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.15); flex-shrink: 0; }
     @media (max-width: 640px) {
-      .map-legend { bottom: 10px; right: 10px; max-width: 160px; }
+      .map-legend { bottom: 52px; right: 10px; max-width: 160px; }
       .legend-item, .legend-status { font-size: 11px; }
       .legend-dot { width: 18px; height: 18px; font-size: 10px; }
     }
