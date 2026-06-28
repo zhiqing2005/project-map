@@ -6,8 +6,8 @@
   <title>工程项目地图</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- 高德地图 Loader（异步加载）+ LeanCloud SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.15.1/dist/av.min.js"></script>
+  <!-- 高德地图 Loader（异步加载）+ Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- 高德地图异步加载器 -->
   <script src="https://unpkg.com/@amap/amap-jsapi-loader@1.0.1/dist/index.js"></script>
   <style>
@@ -500,9 +500,17 @@ const AMAP_KEY = 'be6a46c78f97d20c77b9cbc3270dc051';
 
 // LeanCloud 配置（可选，不配置则使用本地存储）
 // 注册地址：https://leancloud.cn/register
-const LC_APP_ID = 'your-app-id-here';
-const LC_APP_KEY = 'your-app-key-here';
-const LC_SERVER_URL = 'https://your-server-url.leancloud.cn';
+// const LC_APP_ID = 'your-app-id-here';
+// const LC_APP_KEY = 'your-app-key-here';
+// const LC_SERVER_URL = 'https://your-server-url.leancloud.cn';
+
+// ========== Supabase 配置 ==========
+const SUPABASE_URL = 'https://qikqmdajlmumcvwdtuiq.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpa3FtZGFqbG11bWN2d2R0dWlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3NjEwOTAsImV4cCI6MjA5NzMzNzA5MH0.94dixqNHriXlvI9GER45YDwV0VqE7mRakqWXts-QZxM';
+
+// 初始化 Supabase 客户端
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+console.log('✅ Supabase 已初始化');
 
 // ========== 省市两级数据（含坐标）==========
 const PROVINCE_CITY_DATA = {
@@ -688,43 +696,24 @@ let pickedLng = null;
 let pickedLat = null;
 let pickingFromMap = false; // 是否正在地图选点模式
 
-// ========== LeanCloud 初始化 ==========
-let lcReady = false;
-try {
-  if (LC_APP_ID !== 'your-app-id-here') {
-    AV.init({ appId: LC_APP_ID, appKey: LC_APP_KEY, serverURL: LC_SERVER_URL });
-    lcReady = true;
-    console.log('✅ LeanCloud 已初始化');
-  }
-} catch(e) { console.warn('LeanCloud 未配置，使用本地存储模式'); }
+// ========== 数据操作层（Supabase 云端同步）==========
+// 电脑端和手机端共享同一份数据，任何设备操作后实时同步
 
-// ========== 数据操作层 ==========
+// 本地降级缓存 key（Supabase 不可用时使用）
 const PROJECTS_KEY = 'project_map_data';
 
-function loadProjects() {
-  if (lcReady) {
-    const query = new AV.Query('Project');
-    return query.find().then(results =>
-      results.map(p => ({
-        id: p.id,
-        name: p.get('name'),
-        city: p.get('city'),
-        lng: p.get('lng'),
-        lat: p.get('lat'),
-        type: p.get('type'),
-        status: p.get('status'),
-        amount: p.get('amount'),
-        scale: p.get('scale'),
-        contractor: p.get('contractor'),
-        overview: p.get('overview'),
-        remark: p.get('remark'),
-      }))
-    ).catch(err => {
-      console.warn('LeanCloud 读取失败，使用本地数据', err);
-      return loadLocal();
-    });
+async function loadProjects() {
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .order('created_at', { ascending: true });
+  
+  if (error) {
+    console.error('❌ Supabase 读取失败:', error.message);
+    // 降级到本地存储
+    return loadLocal();
   }
-  return Promise.resolve(loadLocal());
+  return data || [];
 }
 
 function loadLocal() {
@@ -737,45 +726,61 @@ function saveLocal(projects) {
 }
 
 async function addProject(data) {
-  if (lcReady) {
-    const Project = AV.Object.extend('Project');
-    const obj = new Project();
-    Object.keys(data).forEach(k => data[k] !== undefined && obj.set(k, data[k]));
-    const saved = await obj.save();
-    return { ...data, id: saved.id };
-  }
-  const projects = loadLocal();
-  const item = { ...data, id: 'local_' + Date.now() };
-  projects.push(item);
-  saveLocal(projects);
-  return item;
+  const { data: result, error } = await supabase
+    .from('projects')
+    .insert([{
+      name: data.name,
+      city: data.city,
+      lng: data.lng,
+      lat: data.lat,
+      type: data.type,
+      status: data.status,
+      amount: data.amount,
+      scale: data.scale,
+      contractor: data.contractor,
+      overview: data.overview,
+      remark: data.remark,
+    }])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return result;
 }
 
 async function updateProject(id, data) {
-  if (lcReady && !id.startsWith('local_')) {
-    const obj = AV.Object.createWithoutData('Project', id);
-    Object.keys(data).forEach(k => data[k] !== undefined && obj.set(k, data[k]));
-    await obj.save();
-    return { ...data, id };
-  }
-  const projects = loadLocal();
-  const idx = projects.findIndex(p => p.id === id);
-  if (idx >= 0) { projects[idx] = { ...projects[idx], ...data }; }
-  saveLocal(projects);
+  const { error } = await supabase
+    .from('projects')
+    .update({
+      name: data.name,
+      city: data.city,
+      lng: data.lng,
+      lat: data.lat,
+      type: data.type,
+      status: data.status,
+      amount: data.amount,
+      scale: data.scale,
+      contractor: data.contractor,
+      overview: data.overview,
+      remark: data.remark,
+    })
+    .eq('id', id);
+  
+  if (error) throw error;
   return { ...data, id };
 }
 
 async function deleteProject(id) {
-  if (lcReady && !id.startsWith('local_')) {
-    await AV.Object.createWithoutData('Project', id).destroy();
-    return id;
-  }
-  const projects = loadLocal().filter(p => p.id !== id);
-  saveLocal(projects);
+  const { error } = await supabase
+    .from('projects')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
   return id;
 }
 
-// ========== 初始项目数据（来自项目清单）==========
+// ========== 初始项目数据（已导入 Supabase，保留作为参考）==========
 const SEED_PROJECTS = [
   {
     name: '潍烟铁路项目',
@@ -834,28 +839,7 @@ const SEED_PROJECTS = [
   },
 ];
 
-const SEED_FLAG_KEY = 'project_map_seeded_v4';
-
-// 导入初始数据
-async function seedProjects() {
-  // 检查是否已经导入过
-  if (localStorage.getItem(SEED_FLAG_KEY)) {
-    console.log('初始数据已导入过，跳过');
-    return;
-  }
-
-  // 清除旧版本的可能残留数据
-  localStorage.removeItem('project_map_seeded');
-  localStorage.removeItem(PROJECTS_KEY);
-
-  console.log('开始导入初始项目数据...');
-  for (const p of SEED_PROJECTS) {
-    await addProject(p);
-    console.log('已导入: ' + p.name);
-  }
-  localStorage.setItem(SEED_FLAG_KEY, '1');
-  console.log('初始数据导入完成，共 ' + SEED_PROJECTS.length + ' 个项目');
-}
+// （seedProjects 已移除 —— 数据直接从 Supabase 云端加载）
 
 // ========== 高德地图逻辑 ==========
 let map = null;
@@ -1672,14 +1656,14 @@ async function initMap() {
 
     console.log('✅ 地图实例创建成功');
 
-    // 地图加载完成后导入初始数据并渲染项目
+    // 地图加载完成后从云端加载项目并渲染
     map.on('complete', async () => {
       console.log('✅ 地图渲染完成');
       // 绘制区域省份色块和总部标注
       drawRegionPolygons(AMapInstance);
       addRegionHQMarkers(AMapInstance);
-      await seedProjects();
-      refreshMap();
+      // 直接从 Supabase 加载（无需 seedProjects）
+      await refreshMap();
     });
   } catch(err) {
     console.error('高德地图加载失败:', err);
